@@ -5,9 +5,10 @@ from thrift import Thrift
 from thrift.transport import TSocket
 from thrift.transport import TTransport
 from thrift.protocol import TBinaryProtocol
+from sys import stdin
 
 
-def main():
+def operate(op, user_id, user_name, score):
     # Make socket
     transport = TSocket.TSocket('127.0.0.1', 9090)
 
@@ -23,11 +24,21 @@ def main():
     # Connect!
     transport.open()
 
-    user = User(1, "ljk", 10000)
-    client.add_user(user, "")
+    user = User(user_id, user_name, score)
+
+    if op == "add":
+        client.add_user(user, "")
+
+    elif op == "remove":
+        client.remove_user(user, "")
 
     # Close!
     transport.close()
+
+def main():
+    for line in stdin:
+        op, user_id, user_name, score = line.split(" ")
+        operate(op, int(user_id), user_name, int(score))
 
 if __name__ == "__main__":
     main()
