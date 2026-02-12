@@ -1,9 +1,14 @@
 #include <iostream>
 #include "./match-server/Match.h"
+#include "./save-client/Save.h"
+
 #include <thrift/protocol/TBinaryProtocol.h>
 #include <thrift/server/TSimpleServer.h>
 #include <thrift/transport/TServerSocket.h>
 #include <thrift/transport/TBufferTransports.h>
+#include <thrift/transport/TTransportUtils.h>
+#include <thrift/transport/TSocket.h>
+
 #include <mutex>
 #include <condition_variable>
 #include <queue>
@@ -14,7 +19,8 @@ using namespace ::apache::thrift::protocol;
 using namespace ::apache::thrift::transport;
 using namespace ::apache::thrift::server;
 
-using namespace  ::match_service;
+using namespace ::match_service;
+using namespace ::save_service;
 
 
 struct Task
@@ -36,9 +42,22 @@ class Pool
     public:
         void save_data(User user1, User user2)
         {
-            std::cout << "save, success!" << std::endl;
+            std::shared_ptr<TTransport> socket(new TSocket("123.57.67.128", 9090));
+            std::shared_ptr<TTransport> transport(new TBufferedTransport(socket));
+            std::shared_ptr<TProtocol> protocol(new TBinaryProtocol(transport));
+            SaveClient client(protocol);
+
+            try {
+                transport->open();
+                uint32_t res = client.save_data("acs_13185", "3f05c09f", user1.id, user2.id);
+                if ( !res ) std::puts("success");
+                else std::puts("failed");
+                transport->close();
+            } catch (TException& tx) {
+                std::cout << "ERROR: " << tx.what() << '\n';
+            }
         }
-        
+
         void match()
         {
             if ( users.size() > 1 )
