@@ -13,6 +13,8 @@
 #include <condition_variable>
 #include <queue>
 #include <vector>
+#include <unistd.h>
+#include <cstdlib>
 
 using namespace ::apache::thrift;
 using namespace ::apache::thrift::protocol;
@@ -42,6 +44,7 @@ class Pool
     public:
         void save_data(User user1, User user2)
         {
+            printf("match result: %d %d\n", user1.id, user2.id);
             std::shared_ptr<TTransport> socket(new TSocket("123.57.67.128", 9090));
             std::shared_ptr<TTransport> transport(new TBufferedTransport(socket));
             std::shared_ptr<TProtocol> protocol(new TBinaryProtocol(transport));
@@ -58,22 +61,52 @@ class Pool
             }
         }
 
+        bool check_match(uint32_t a, uint32_t b)
+        {
+            uint32_t res = std::abs( users[a].score - users[b].score );
+            uint32_t a_diff = 50 * wt[a];
+            uint32_t b_diff = 50 * wt[b];
+
+            return res <= a_diff && res <= b_diff;
+        }
+
         void match()
         {
+            for ( uint32_t i = 0; i < users.size(); i ++ )
+            {
+                wt[i] ++;
+            }
             if ( users.size() > 1 )
             {
-                User user1 = users[0];
-                User user2 = users[1];
-                users.erase(users.begin());
-                users.erase(users.begin());
-                std::cout << "match, success" << user1.id << " " << user2.id << std::endl;
-                save_data(user1, user2);
+                bool flag = false;
+                for ( uint32_t i = 0; i < users.size(); i ++ )
+                {
+                    for ( uint32_t j = i + 1; j < users.size(); j ++ )
+                    {
+                        if ( check_match(i, j) )
+                        {
+                            User user1 = users[i];
+                            User user2 = users[j];
+                            users.erase(users.begin() + i);
+                            wt.erase(wt.begin() + i);
+                            users.erase(users.begin() + j - 1);
+                            wt.erase(wt.begin() + j - 1);
+                            flag = true;
+                            save_data(user1, user2);
+                            break;
+                        }
+                    }
+                    if ( flag )
+                        break;
+                }
+
             }
         }
 
         void add(User user)
         {
             users.push_back(user);
+            wt.push_back(0);
             std::cout << "add, success" << std::endl;
         }
 
@@ -92,6 +125,7 @@ class Pool
 
     private:
         std::vector<User> users;
+        std::vector<uint32_t> wt;
 }pool;
 
 class MatchHandler : virtual public MatchIf {
@@ -145,7 +179,9 @@ void consumer()
         std::unique_lock<std::mutex> lck(message_queue.m);
         if (message_queue.q.empty())
         {
-            message_queue.cv.wait(lck);
+            lck.unlock();
+            pool.match();
+            sleep(1);
         }
         else
         {
@@ -157,7 +193,6 @@ void consumer()
             else if ( type == "remove" )
                 pool.remove(user);
             lck.unlock();
-            pool.match();
         }
     }
 }
